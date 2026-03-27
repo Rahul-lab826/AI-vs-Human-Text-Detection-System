@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TextSentinel — AI vs Human Text Detector</title>
+  <style>
+    /* ── RESET & BASE ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --human-clr: #3fb950;
+      --ai-clr: #f85149;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── HEADER ───────────────────────────────────────────────── */
+    .site-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header-inner {
+      max-width: 1300px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px;
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-icon { font-size: 2rem; }
+    .logo h1 { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
+    .logo .tagline { font-size: .75rem; color: var(--muted); }
+
+    .stats-chips { display: flex; gap: 10px; flex-wrap: wrap; }
+    .chip {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 5px 14px;
+      display: flex; align-items: center; gap: 8px;
+      font-size: .8rem;
+    }
+    .chip-label { color: var(--muted); }
+    .chip-value { color: var(--accent); font-weight: 700; }
+    .chip-value.ens { color: #a371f7; }
+
+    /* ── MAIN LAYOUT ──────────────────────────────────────────── */
+    main.container {
+      max-width: 1300px; margin: 28px auto; padding: 0 20px;
+      display: grid;
+      grid-template-columns: 1fr 1.4fr;
+      gap: 20px; flex: 1;
+    }
+    @media(max-width: 860px) { main.container { grid-template-columns: 1fr; } }
+
+    /* ── CARDS ────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px; padding: 24px;
+      transition: transform .2s ease, box-shadow .2s ease;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 32px rgba(0,0,0,.45);
+    }
+    .card-title {
+      font-size: 1rem; font-weight: 700;
+      margin-bottom: 18px; color: var(--accent);
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    /* ── INPUT PANEL ──────────────────────────────────────────── */
+    .form-row { margin-bottom: 14px; }
+    .form-row label {
+      display: block; font-size: .8rem;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    select {
+      width: 100%; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); padding: 8px 12px; font-size: .9rem;
+      cursor: pointer;
+    }
+    textarea {
+      width: 100%; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); padding: 12px; font-size: .9rem;
+      resize: vertical; min-height: 180px; line-height: 1.6;
+      font-family: inherit;
+      transition: border-color .2s;
+    }
+    textarea:focus { outline: none; border-color: var(--accent); }
+    .char-count { font-size: .75rem; color: var(--muted); text-align: right; margin-top: 4px; }
+
+    .sample-btns {
+      display: flex; align-items: center; gap: 8px;
+      flex-wrap: wrap; margin: 14px 0;
+    }
+    .sample-label { font-size: .8rem; color: var(--muted); }
+    .btn-sample {
+      padding: 5px 14px; border-radius: 20px; border: none;
+      font-size: .8rem; cursor: pointer; font-weight: 600;
+      transition: opacity .2s;
+    }
+    .btn-sample:hover { opacity: .8; }
+    .btn-human { background: rgba(63,185,80,.2); color: var(--green); border: 1px solid var(--green); }
+    .btn-ai { background: rgba(248,81,73,.2); color: var(--red); border: 1px solid var(--red); }
+
+    .btn-analyze {
+      width: 100%; padding: 13px; border-radius: 10px;
+      background: var(--accent); color: #0d1117;
+      border: none; font-size: 1rem; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center;
+      justify-content: center; gap: 10px;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn-analyze:hover { opacity: .9; }
+    .btn-analyze:active { transform: scale(.98); }
+    .btn-analyze:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* spinner */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 3px solid rgba(0,0,0,.3);
+      border-top-color: #000;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
+
+    /* ── RESULT PANEL ─────────────────────────────────────────── */
+    .result-placeholder {
+      text-align: center; padding: 60px 20px;
+      color: var(--muted);
+    }
+    .placeholder-icon { font-size: 3rem; margin-bottom: 12px; }
+
+    /* prediction badge */
+    .prediction-badge {
+      text-align: center; padding: 20px;
+      border-radius: 12px; margin-bottom: 20px;
+      font-size: 1.6rem; font-weight: 800;
+      display: flex; align-items: center;
+      justify-content: center; gap: 12px;
+      transition: all .3s;
+    }
+    .prediction-badge.human {
+      background: rgba(63,185,80,.12);
+      border: 2px solid var(--green);
+      color: var(--green);
+      box-shadow: 0 0 18px rgba(63,185,80,.25);
+    }
+    .prediction-badge.ai {
+      background: rgba(248,81,73,.12);
+      border: 2px solid var(--red);
+      color: var(--red);
+      box-shadow: 0 0 18px rgba(248,81,73,.25);
+    }
+    .prediction-badge.aih {
+      background: rgba(210,153,34,.12);
+      border: 2px solid var(--yellow);
+      color: var(--yellow);
+      box-shadow: 0 0 18px rgba(210,153,34,.25);
+    }
+
+    /* ── THREE-LAYER VERDICT ──────────────────────────────────── */
+    .verdict-section { margin-bottom: 18px; }
+    .verdict-section h3 {
+      font-size: .85rem; color: var(--muted);
+      margin-bottom: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .verdict-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .verdict-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+      text-align: center;
+    }
+    .verdict-item .v-icon { font-size: 1.2rem; margin-bottom: 4px; }
+    .verdict-item .v-label { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .verdict-item .v-val { font-size: .9rem; font-weight: 700; margin-top: 2px; }
+    .v-human { color: var(--green); }
+    .v-ai    { color: var(--red); }
+    .v-aih   { color: var(--yellow); }
+    .v-neutral { color: var(--accent); }
+
+    /* Insight box */
+    .insight-box {
+      font-size: .82rem;
+      color: var(--muted);
+      background: var(--surface2);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 6px 6px 0;
+      padding: 9px 14px;
+    }
+    .insight-box:empty { display: none; }
+
+    /* confidence */
+    .confidence-section { margin-bottom: 18px; }
+    .conf-header {
+      display: flex; justify-content: space-between;
+      font-size: .85rem; margin-bottom: 8px;
+    }
+    .conf-pct { font-weight: 700; color: var(--accent); }
+    .conf-bar-track {
+      background: var(--surface2); border-radius: 8px;
+      height: 10px; overflow: hidden;
+    }
+    .conf-bar-fill {
+      height: 100%; border-radius: 8px;
+      background: linear-gradient(90deg, var(--accent), #a371f7);
+      transition: width .8s cubic-bezier(.4,0,.2,1);
+      width: 0%;
+    }
+    .conf-legend {
+      display: flex; justify-content: space-between;
+      font-size: .78rem; color: var(--muted); margin-top: 6px;
+    }
+    .conf-legend span strong { color: var(--text); }
+
+    /* Split bar */
+    .split-bar-wrap {
+      display: flex; height: 8px; border-radius: 6px;
+      overflow: hidden; margin-top: 10px;
+      border: 1px solid var(--border);
+    }
+    .split-bar-human {
+      background: var(--green);
+      height: 100%;
+      transition: width .8s cubic-bezier(.4,0,.2,1);
+      width: 0%;
+    }
+    .split-bar-ai {
+      background: var(--red);
+      height: 100%;
+      transition: width .8s cubic-bezier(.4,0,.2,1);
+      width: 0%;
+    }
+    .split-bar-legend {
+      display: flex; justify-content: space-between;
+      font-size: .72rem; margin-top: 4px;
+    }
+    .sbl-human { color: var(--green); font-weight: 600; }
+    .sbl-ai    { color: var(--red);   font-weight: 600; }
+
+    /* decision */
+    .decision-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 16px; border-radius: 8px;
+      background: var(--surface2); margin-bottom: 18px;
+    }
+    .decision-badge {
+      font-size: .85rem; font-weight: 700; padding: 3px 12px;
+      border-radius: 12px; white-space: nowrap;
+    }
+    .decision-badge.green { background: rgba(63,185,80,.2); color: var(--green); }
+    .decision-badge.yellow { background: rgba(210,153,34,.2); color: var(--yellow); }
+    .decision-badge.red { background: rgba(248,81,73,.2); color: var(--red); }
+    .decision-msg { font-size: .82rem; color: var(--muted); }
+
+    /* ── AI-HUMANIZED RISK METER ──────────────────────────────── */
+    .risk-meter-section { margin-bottom: 18px; }
+    .risk-meter-section h3 {
+      font-size: .85rem; color: var(--muted);
+      margin-bottom: 8px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .risk-meter-track {
+      height: 12px; border-radius: 8px; overflow: hidden;
+      background: var(--surface2); border: 1px solid var(--border);
+    }
+    .risk-meter-fill {
+      height: 100%; border-radius: 8px;
+      transition: width .8s cubic-bezier(.4,0,.2,1), background .4s;
+      width: 0%;
+    }
+    .risk-meter-fill.risk-low    { background: var(--green); }
+    .risk-meter-fill.risk-medium { background: var(--yellow); }
+    .risk-meter-fill.risk-high   { background: var(--red); }
+    .risk-meter-labels {
+      display: flex; justify-content: space-between;
+      font-size: .7rem; color: var(--muted); margin-top: 4px;
+    }
+
+    /* ── AI-HUMANIZED WARNING BANNER ──────────────────────────── */
+    .aih-banner {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 12px 16px; border-radius: 8px; margin-bottom: 14px;
+      background: rgba(210,153,34,.12);
+      border: 1px solid rgba(210,153,34,.45);
+    }
+    .aih-banner-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 1px; }
+    .aih-banner-body { flex: 1; }
+    .aih-banner-title {
+      font-size: .85rem; font-weight: 700; color: var(--yellow);
+      margin-bottom: 3px;
+    }
+    .aih-banner-msg { font-size: .78rem; color: var(--muted); line-height: 1.5; }
+    .aih-risk-badge {
+      font-size: .72rem; font-weight: 700; padding: 2px 8px;
+      border-radius: 10px; white-space: nowrap; align-self: center;
+    }
+    .aih-risk-high   { background: rgba(248,81,73,.2);  color: var(--red);    border: 1px solid rgba(248,81,73,.4); }
+    .aih-risk-medium { background: rgba(210,153,34,.2); color: var(--yellow); border: 1px solid rgba(210,153,34,.4); }
+    .aih-risk-low    { background: rgba(63,185,80,.2);  color: var(--green);  border: 1px solid rgba(63,185,80,.4); }
+
+    /* ── MODEL COMPARISON TABLE ───────────────────────────────── */
+    .models-section { margin-bottom: 18px; }
+    .models-section h3 {
+      font-size: .85rem; color: var(--muted);
+      margin-bottom: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .models-table {
+      width: 100%; border-collapse: collapse;
+      font-size: .82rem;
+    }
+    .models-table th {
+      text-align: left; padding: 7px 10px;
+      color: var(--muted); font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      font-size: .78rem; text-transform: uppercase;
+    }
+    .models-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .models-table tr:last-child td { border-bottom: none; }
+    .models-table tr.ensemble-row td {
+      background: rgba(88,166,255,.07);
+      font-weight: 700;
+    }
+    .tag-human { color: var(--green); font-weight: 700; }
+    .tag-ai { color: var(--red); font-weight: 700; }
+    .mini-bar-wrap {
+      background: var(--surface2); border-radius: 4px;
+      height: 6px; width: 80px; overflow: hidden; display: inline-block;
+      vertical-align: middle; margin-left: 6px;
+    }
+    .mini-bar { height: 100%; border-radius: 4px; background: var(--accent); }
+
+    /* ── FEATURES GRID (12 cards) ─────────────────────────────── */
+    .features-section { margin-bottom: 18px; }
+    .features-section h3 {
+      font-size: .85rem; color: var(--muted);
+      margin-bottom: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .feature-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+      text-align: center;
+      position: relative;
+      cursor: default;
+    }
+    .feature-item.fi-green { border-color: rgba(63,185,80,.5); }
+    .feature-item.fi-red   { border-color: rgba(248,81,73,.5); }
+    .feature-item.fi-yellow { border-color: rgba(210,153,34,.5); }
+    .feature-item .f-val {
+      font-size: 1.1rem; font-weight: 700; color: var(--accent);
+    }
+    .feature-item .f-lbl {
+      font-size: .7rem; color: var(--muted); margin-top: 2px;
+    }
+    .feature-item .f-tip {
+      display: none;
+      position: absolute; bottom: calc(100% + 6px); left: 50%;
+      transform: translateX(-50%);
+      background: #1c2128; border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 10px;
+      font-size: .7rem; color: var(--text);
+      white-space: nowrap; z-index: 10;
+      pointer-events: none;
+    }
+    .feature-item:hover .f-tip { display: block; }
+
+    /* ── HUMANIZED SIGNALS GRID ───────────────────────────────── */
+    .signals-section { margin-bottom: 18px; }
+    .signals-section h3 {
+      font-size: .85rem; color: var(--muted);
+      margin-bottom: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .signals-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .signal-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+    }
+    .signal-item .s-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 4px;
+    }
+    .signal-item .s-lbl { font-size: .72rem; color: var(--muted); }
+    .signal-item .s-val { font-size: .92rem; font-weight: 700; }
+    .signal-item .s-hint { font-size: .68rem; color: var(--muted); }
+    .s-green { color: var(--green); }
+    .s-red   { color: var(--red); }
+
+    /* model tag */
+    .model-tag {
+      font-size: .78rem; color: var(--muted);
+      text-align: right; margin-top: 4px;
+    }
+    .model-tag strong { color: var(--accent); }
+
+    /* ── FOOTER ───────────────────────────────────────────────── */
+    .site-footer {
+      text-align: center; padding: 18px;
+      font-size: .8rem; color: var(--muted);
+      border-top: 1px solid var(--border);
+      margin-top: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">🤖</span>
+        <div>
+          <h1>TextSentinel</h1>
+          <p class="tagline">AI vs Human Text Detector</p>
+        </div>
+      </div>
+      <div class="stats-chips" id="statsChips">
+        <div class="chip">
+          <span class="chip-label">LR</span>
+          <span class="chip-value" id="lrAcc">—</span>
+        </div>
+        <div class="chip">
+          <span class="chip-label">NB</span>
+          <span class="chip-value" id="nbAcc">—</span>
+        </div>
+        <div class="chip">
+          <span class="chip-label">RF</span>
+          <span class="chip-value" id="rfAcc">—</span>
+        </div>
+        <div class="chip">
+          <span class="chip-label">SVM</span>
+          <span class="chip-value" id="svmAcc">—</span>
+        </div>
+        <div class="chip">
+          <span class="chip-label">🏆 Ensemble</span>
+          <span class="chip-value ens" id="ensAcc">—</span>
+        </div>
+        <div class="chip">
+          <span class="chip-label">Dataset</span>
+          <span class="chip-value">22,500 samples</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="container">
+
+    <!-- LEFT: INPUT -->
+    <section class="card input-card">
+      <h2 class="card-title">🔎 Analyze Text</h2>
+
+      <div class="form-row">
+        <label for="modelSelect">Primary Model</label>
+        <select id="modelSelect">
+          <option value="ensemble" selected>🏆 Ensemble (Recommended)</option>
+          <option value="lr">Logistic Regression</option>
+          <option value="nb">Naive Bayes</option>
+          <option value="rf">Random Forest</option>
+          <option value="svm">SVM</option>
+        </select>
+      </div>
+
+      <textarea id="textInput"
+        placeholder="Paste or type text here to detect if it's human-written or AI-generated…"
+        rows="12"
+        oninput="document.getElementById('charCount').textContent = this.value.length"
+      ></textarea>
+      <div class="char-count"><span id="charCount">0</span> characters</div>
+
+      <div class="sample-btns">
+        <span class="sample-label">Load sample:</span>
+        <button class="btn-sample btn-human" onclick="loadSample('human')">👤 Human Text</button>
+        <button class="btn-sample btn-ai" onclick="loadSample('ai')">🤖 AI Text</button>
+        <button class="btn-sample btn-ai" onclick="loadSample('tricky')" style="border-color:#d29922;color:#d29922;background:rgba(210,153,34,.15)">😈 Tricky Text</button>
+      </div>
+
+      <button class="btn-analyze" id="analyzeBtn" onclick="analyze()">
+        <span id="btnText">Analyze Text</span>
+        <span id="btnSpinner" class="spinner hidden"></span>
+      </button>
+    </section>
+
+    <!-- RIGHT: RESULTS -->
+    <section class="card result-card" id="resultCard">
+
+      <div class="result-placeholder" id="resultPlaceholder">
+        <div class="placeholder-icon">🔍</div>
+        <p>Results will appear here after analysis.</p>
+        <p style="font-size:.8rem;margin-top:8px;color:#6e7681">Try loading a sample text and clicking Analyze!</p>
+      </div>
+
+      <div class="result-content hidden" id="resultContent">
+
+        <!-- Big prediction -->
+        <div class="prediction-badge" id="predictionBadge">
+          <span id="predIcon"></span>
+          <span id="predLabel"></span>
+        </div>
+
+        <!-- THREE-LAYER VERDICT -->
+        <div class="verdict-section">
+          <h3>🔬 Analysis Layers</h3>
+          <div class="verdict-grid">
+            <div class="verdict-item">
+              <div class="v-icon">🧠</div>
+              <div class="v-label">Surface Analysis</div>
+              <div class="v-val" id="verdictSurface">—</div>
+            </div>
+            <div class="verdict-item">
+              <div class="v-icon">🕵️</div>
+              <div class="v-label">Deep Analysis</div>
+              <div class="v-val" id="verdictDeep">—</div>
+            </div>
+            <div class="verdict-item">
+              <div class="v-icon">⚖️</div>
+              <div class="v-label">Final Verdict</div>
+              <div class="v-val" id="verdictFinal">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Confidence bar -->
+        <div class="confidence-section">
+          <div class="conf-header">
+            <span>Ensemble Confidence</span>
+            <span id="confValue" class="conf-pct"></span>
+          </div>
+          <div class="conf-bar-track">
+            <div class="conf-bar-fill" id="confBarFill"></div>
+          </div>
+          <div class="conf-legend">
+            <span>👤 Human: <strong id="probaHuman"></strong></span>
+            <span>🤖 AI: <strong id="probaAI"></strong></span>
+          </div>
+
+          <!-- Split bar -->
+          <div class="split-bar-wrap">
+            <div class="split-bar-human" id="splitBarHuman"></div>
+            <div class="split-bar-ai"    id="splitBarAI"></div>
+          </div>
+          <div class="split-bar-legend">
+            <span class="sbl-human">👤 Human</span>
+            <span class="sbl-ai">AI 🤖</span>
+          </div>
+        </div>
+
+        <!-- Decision badge -->
+        <div class="decision-row" id="decisionRow">
+          <span class="decision-badge" id="decisionBadge"></span>
+          <span class="decision-msg" id="decisionMsg"></span>
+        </div>
+
+        <!-- Insight text -->
+        <div class="insight-box" id="insightBox" style="margin-bottom:14px"></div>
+
+        
+        
+        <!-- AI-HUMANIZED WARNING BANNER -->
+        <div class="aih-banner hidden" id="aihBanner">
+          <span class="aih-banner-icon">⚠️</span>
+          <div class="aih-banner-body">
+            <div class="aih-banner-title">AI-Humanized Text Detected</div>
+            <div class="aih-banner-msg" id="aihBannerMsg"></div>
+          </div>
+        </div>
+
+        <!-- HUMANIZED SIGNALS -->
+        <div class="signals-section hidden" id="signalsSection">
+          <h3>🕵️ Structural Signals</h3>
+          <div class="signals-grid" id="signalsGrid"></div>
+        </div>
+
+        <!-- Model comparison table -->
+        <div class="models-section">
+          <h3>📊 All Models Comparison</h3>
+          <table class="models-table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Prediction</th>
+                <th>Human %</th>
+                <th>AI %</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody id="modelsTableBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Feature breakdown (12 cards) -->
+        <div class="features-section">
+          <h3>🧪 Feature Breakdown</h3>
+          <div class="features-grid" id="featuresGrid"></div>
+        </div>
+
+        <div class="model-tag">Main model: <strong id="modelUsed"></strong></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    Built for the Hackathon &nbsp;·&nbsp; Offline ML &nbsp;·&nbsp; No external APIs &nbsp;·&nbsp; 4 Models + Ensemble &nbsp;·&nbsp; 22,500 samples
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

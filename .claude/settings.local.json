@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python data/generate_dataset.py)",
+      "Bash(python -c \":*)",
+      "Bash(python train_model.py)"
+    ]
+  }
+}
